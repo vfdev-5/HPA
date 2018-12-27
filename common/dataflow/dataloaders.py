@@ -65,11 +65,11 @@ def get_base_train_val_loaders_by_fold(input_path, train_transforms, val_transfo
                               pin_memory="cuda" in device, drop_last=True)
 
     val_loader = DataLoader(val_ds, shuffle=False,
-                            batch_size=batch_size, num_workers=num_workers,
+                            batch_size=batch_size * 4, num_workers=num_workers,
                             pin_memory="cuda" in device, drop_last=False)
 
     train_eval_loader = DataLoader(train_eval_ds, shuffle=False,
-                                   batch_size=batch_size, num_workers=num_workers,
+                                   batch_size=batch_size * 4, num_workers=num_workers,
                                    pin_memory="cuda" in device, drop_last=False)
 
     return train_loader, val_loader, train_eval_loader
