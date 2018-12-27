@@ -1,0 +1,3 @@
+[submodule "IgniteConfRunner"]
+	path = IgniteConfRunner
+	url = https://github.com/vfdev-5/IgniteConfRunner.git
