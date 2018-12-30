@@ -284,24 +284,7 @@ def validate(config, logger):
 
     for t in HPADataset.tags:
         mlflow.log_metric("{} Pr".format(t), validator.state.metrics['pr_{}'.format(t)].item())
-        mlflow.log_metric("{} Re".format(t), validator.state.metrics['re_{}'.format(t)].item())
-    
-    logger.info("Save probabilities")
-    y_preds_mean_tta = np.round(y_probas_mean_tta)
-    output = pd.DataFrame({"Id": x_ids})
-    output.loc[:, "Predicted"] = ""
-
-    data = []
-    for y in y_preds_mean_tta:
-        res = " ".join([str(v) for v in np.where(y > 0)[0]])
-        if len(res) < 1:
-            res = "0"
-        data.append(res)
-
-    output.loc[:, "Predicted"] = data
-    output_filepath = Path(config['log_dir']) / "submission_{}.csv".format(get_object_name(model))
-    output.to_csv(output_filepath, index=None)
-    
+        mlflow.log_metric("{} Re".format(t), validator.state.metrics['re_{}'.format(t)].item())    
 
 if __name__ == "__main__":
 

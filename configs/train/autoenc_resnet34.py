@@ -98,7 +98,7 @@ num_epochs = 100
 
 
 def thresholded_output_transform(output):
-    y_pred, y = output
+    (_, y_pred), y = output
     y_pred = torch.round(torch.sigmoid(y_pred))
     return y_pred, y
 

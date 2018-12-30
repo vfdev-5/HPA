@@ -26,7 +26,7 @@ seed = 12
 device = "cuda"
 debug = False
 
-val_fold_index = 0
+val_fold_index = 1
 n_folds = 3
 
 train_transforms = Compose([

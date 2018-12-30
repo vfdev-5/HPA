@@ -56,19 +56,20 @@ class HPAAutoEncodeResNet34(nn.Module):
         c4 = self.resnet.layer3(c3)
         c5 = self.resnet.layer4(c4)
 
-        # p1 = self.decode(c1, c2, c3, c4, c5)
-
-        p4 = self.head4(c5)
-        p3 = self.head3(p4)
-        p2 = self.head2(p3)
-        p1 = self.head1(p2)
-        output = self.last(p1)
-
         y = self.avgpool(c5)
         y = y.reshape((y.shape[0], -1))
         y = self.fc(y)
 
-        return output, y
+        if self.training:
+            # p1 = self.decode(c1, c2, c3, c4, c5)
+            p4 = self.head4(c5)
+            p3 = self.head3(p4)
+            p2 = self.head2(p3)
+            p1 = self.head1(p2)
+            output = self.last(p1)
+            return output, y
+
+        return y
 
 
 if __name__ == "__main__":
@@ -78,4 +79,3 @@ if __name__ == "__main__":
     model = HPAAutoEncodeResNet34(num_classes=28)
     out, y = model(x)
     print(out.shape, y.shape)
-
