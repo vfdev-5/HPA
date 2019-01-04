@@ -9,12 +9,12 @@ import matplotlib
 matplotlib.use('Agg')
 
 from albumentations import Compose, RandomCrop, RandomCropNearBBox, ShiftScaleRotate, GaussNoise, ElasticTransform
-from albumentations import CenterCrop
+from albumentations import RandomBrightnessContrast
 from albumentations.pytorch import ToTensor
 
 from dataflow.datasets import INPUT_PATH, HPADataset
 from dataflow.dataloaders import get_base_train_val_loaders_by_fold
-from models.senet import HPASENet50
+from models.resnet import HPASeparableResNet34
 from loss_functions.focal_loss import FocalLoss
 
 from custom_ignite.metrics.accuracy import Accuracy
@@ -30,15 +30,17 @@ val_fold_index = 2
 n_folds = 3
 
 train_transforms = Compose([
-    ShiftScaleRotate(shift_limit=0.2, scale_limit=0.01, rotate_limit=15, interpolation=cv2.INTER_CUBIC, p=0.3),
+    ShiftScaleRotate(shift_limit=0.2, scale_limit=0.075, rotate_limit=45, interpolation=cv2.INTER_CUBIC, p=0.3),
     ElasticTransform(p=0.5),
-    ToTensor()
+    RandomBrightnessContrast(),
+    ToTensor(normalize={"mean": [0.5, 0.5, 0.5, 0.5], "std": [1.0, 1.0, 1.0, 1.0]})
 ])
 train_transform_fn = lambda dp: train_transforms(**dp)
 
 
 val_transforms = Compose([
-    ToTensor()
+    RandomBrightnessContrast(),
+    ToTensor(normalize={"mean": [0.5, 0.5, 0.5, 0.5], "std": [1.0, 1.0, 1.0, 1.0]})
 ])
 val_transform_fn = lambda dp: val_transforms(**dp)
 
@@ -52,16 +54,16 @@ train_loader, val_loader, train_eval_loader = \
                                        fold_index=val_fold_index, n_folds=n_folds,
                                        random_state=seed)
 
-model = HPASENet50(num_classes=HPADataset.num_tags)
+model = HPASeparableResNet34(num_classes=HPADataset.num_tags)
 
 
 criterion = FocalLoss(gamma=0.4)
 optimizer = SGD(model.parameters(), lr=0.01, momentum=0.5)
 
 # Optional config param
-lr_scheduler = MultiStepLR(optimizer, milestones=[20, 30, 40, 50, 60, 70], gamma=0.77)
+lr_scheduler = MultiStepLR(optimizer, milestones=[20, 30, 40, 50, 60, 70, 100, 120, 150, 170], gamma=0.77)
 
-num_epochs = 100
+num_epochs = 200
 
 
 def thresholded_output_transform(output):
