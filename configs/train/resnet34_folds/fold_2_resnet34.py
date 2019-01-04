@@ -1,7 +1,6 @@
 import cv2
 import torch
-import torch.nn as nn
-from torch.optim import SGD
+from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 
 
@@ -58,12 +57,12 @@ model = HPASeparableResNet34(num_classes=HPADataset.num_tags)
 
 
 criterion = FocalLoss(gamma=0.4)
-optimizer = SGD(model.parameters(), lr=0.01, momentum=0.5)
+optimizer = Adam(model.parameters(), lr=0.001, weight_decay=0.0001, amsgrad=True)
 
 # Optional config param
-lr_scheduler = MultiStepLR(optimizer, milestones=[20, 30, 40, 50, 60, 70, 100, 120, 150, 170], gamma=0.77)
+lr_scheduler = MultiStepLR(optimizer, milestones=[20, 30, 40, 50, 60, 70, 100, 120, 150, 170], gamma=0.88)
 
-num_epochs = 200
+num_epochs = 100
 
 
 def thresholded_output_transform(output):
