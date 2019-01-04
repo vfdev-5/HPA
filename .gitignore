@@ -2,6 +2,7 @@
 
 *HPA_*
 *.png
+*.csv
 
 ## Custom ignores
 /input

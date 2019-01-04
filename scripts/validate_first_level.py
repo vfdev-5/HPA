@@ -6,6 +6,7 @@ from importlib import util
 from collections import defaultdict
 from functools import partial
 
+import numpy as np
 import pandas as pd
 
 import tempfile
@@ -15,7 +16,6 @@ import logging
 import shutil
 
 import torch
-from torch.utils.data import DataLoader
 
 import mlflow
 
@@ -160,18 +160,36 @@ def get_object_name(obj):
 
 
 def prepare_batch(batch, device=None, non_blocking=False):
-    x, y = batch['image'], batch['tags']
-    return (convert_tensor(x, device=device, non_blocking=non_blocking), y)
+    x, y, image_id = batch['image'], batch['target'], batch['image_id']
+    return convert_tensor(x, device=device, non_blocking=non_blocking), {"target": y, "image_id": image_id}
 
 
 def weights_path(client, run_uuid, weights_filename):
-    path = Path(client.tracking_uri)
+    # path = Path(client.tracking_uri)
     run_info = client.get_run(run_id=run_uuid)
     artifact_uri = run_info.info.artifact_uri
-    artifact_uri = artifact_uri[artifact_uri.find("/") + 1:]
-    path /= Path(artifact_uri) / weights_filename
+    # artifact_uri = artifact_uri[artifact_uri.find("/") + 1:]
+    # path /= Path(artifact_uri) / weights_filename
+    path = Path(artifact_uri) / weights_filename
     assert path.exists(), "File is not found at {}".format(path.as_posix())
     return path.as_posix()
+
+
+def save_predictions(x_ids, y_probas, output_filepath):
+    assert len(x_ids) == len(y_probas)
+
+    x_ids_flatten = []
+    for ids in x_ids:
+        x_ids_flatten.extend(ids)
+
+    y_probas = np.concatenate([probas.cpu().numpy() for probas in y_probas], axis=0)
+    print("y_probas: ", y_probas.shape)
+
+    output = pd.DataFrame({"Id": x_ids_flatten})
+    for i, tag in enumerate(HPADataset.tags):
+        output.loc[:, tag] = y_probas[:, i]
+
+    output.to_csv(output_filepath, index=None)
 
 
 def setup_metrics():
@@ -223,14 +241,16 @@ def validate(config, logger):
     model.to(device)
     _ = model.eval()
 
-    predictor_tta = create_supervised_evaluator(model, device=device, non_blocking="cuda" in device, prepare_batch=prepare_batch)
+    predictor_tta = create_supervised_evaluator(model, device=device,
+                                                non_blocking="cuda" in device,
+                                                prepare_batch=prepare_batch)
     ProgressBar(desc='Predict TTA ', persist=True).attach(predictor_tta)
 
     val_loader = config['val_loader']
 
     y_probas_mean_tta = [0 for _ in range(len(val_loader))]
     y_true = []
-
+    x_ids = []
     n_tta = config['n_tta']
 
     @predictor_tta.on(Events.ITERATION_COMPLETED)
@@ -243,12 +263,17 @@ def validate(config, logger):
 
         tta_index = engine.state.epoch - 1
         if tta_index == 0:
-            y_true.append(output[1])
+            y_true.append(output[1]['target'])
+            x_ids.append(output[1]['image_id'])
 
     logger.info("Start predictions with {} TTA".format(n_tta))
     mlflow.log_param("num_tta", n_tta)
     predictor_tta.run(val_loader, max_epochs=n_tta)
     logger.debug("Ended predictions")
+
+    # Save predictions as csv
+    output_filepath = Path(config['log_dir']) / "probas_{}.csv".format(get_object_name(model))
+    save_predictions(x_ids, y_probas_mean_tta, output_filepath)
 
     y_preds_mean_tta = [torch.round(y_probas).cpu() for y_probas in y_probas_mean_tta]
 
@@ -285,6 +310,7 @@ def validate(config, logger):
     for t in HPADataset.tags:
         mlflow.log_metric("{} Pr".format(t), validator.state.metrics['pr_{}'.format(t)].item())
         mlflow.log_metric("{} Re".format(t), validator.state.metrics['re_{}'.format(t)].item())    
+
 
 if __name__ == "__main__":
 

@@ -89,7 +89,7 @@ def set_seed(seed):
 
 def run(config):
 
-    logger = logging.getLogger("Inference First Level")
+    logger = logging.getLogger("Ensemble predictions")
     log_level = logging.INFO
 
     if config['debug']:
@@ -109,7 +109,7 @@ def run(config):
     logger.info("MLFlow version: {}".format(mlflow.__version__))
 
     # This sets also experiment id as stated by `mlflow.start_run`
-    mlflow.set_experiment("Inference First Level" if not config['debug'] else "Debug")
+    mlflow.set_experiment("Ensemble predictions" if not config['debug'] else "Debug")
     source_name = config['config_filepath'].stem
     with mlflow.start_run(source_name=source_name):
         set_seed(config['seed'])
@@ -124,7 +124,7 @@ def run(config):
             logger.info("CUDA version: {}".format(torch.version.cuda))
 
         try:
-            inference(config, logger)
+            ensemble(config, logger)
         except KeyboardInterrupt:
             logger.info("Catched KeyboardInterrupt -> exit")
         except Exception as e:  # noqa
@@ -158,33 +158,29 @@ def prepare_batch(batch, device=None, non_blocking=False):
     return convert_tensor(x, device=device, non_blocking=non_blocking), {"target": y, "image_id": image_id}
 
 
-def weights_path(client, run_uuid, weights_filename):
-    # path = Path(client.tracking_uri)
+def predictions_path(client, run_uuid, weights_filename):
+    path = Path(client.tracking_uri)
     run_info = client.get_run(run_id=run_uuid)
     artifact_uri = run_info.info.artifact_uri
-    # artifact_uri = artifact_uri[artifact_uri.find("/") + 1:]
-    # path /= Path(artifact_uri) / weights_filename
-    path = Path(artifact_uri) / weights_filename
+    artifact_uri = artifact_uri[artifact_uri.find("/") + 1:]
+    path /= Path(artifact_uri) / weights_filename
+    # path = Path(artifact_uri) / weights_filename
     assert path.exists(), "File is not found at {}".format(path.as_posix())
     return path.as_posix()
 
 
-def inference(config, logger):
-
-    model = config['model']
-    run_uuid = config['run_uuid']
-    weights_filename = config['weights_filename']
-    device = config['device']
+def ensemble(config, logger):
 
     client = mlflow.tracking.MlflowClient(tracking_uri=os.environ['MLFLOW_TRACKING_URI'])
-    model.load_state_dict(torch.load(weights_path(client, run_uuid, weights_filename)))
 
-    mlflow.log_param("model", get_object_name(model))
-    mlflow.log_param("training run id", run_uuid)
-    mlflow.log_param("weights_filename", weights_filename)
+    inferences = config['inferences']
+    fold_pred_paths = [predictions_path(client, run_id, filename) for run_id, filename in inferences]
+    fold_preds = [pd.read_csv(p) for p in fold_pred_paths]
 
-    model.to(device)
-    _ = model.eval()
+    for i, (run_id, filename) in enumerate(inferences):
+        mlflow.log_param("fold {} run id".format(i), run_id)
+        mlflow.log_param("fold {} filename".format(i), filename)
+
 
     predictor_tta = create_supervised_evaluator(model, device=device, non_blocking="cuda" in device, prepare_batch=prepare_batch)
     ProgressBar(desc='Predict TTA ', persist=True).attach(predictor_tta)

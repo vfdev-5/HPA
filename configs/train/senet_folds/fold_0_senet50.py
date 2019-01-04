@@ -9,7 +9,6 @@ import matplotlib
 matplotlib.use('Agg')
 
 from albumentations import Compose, RandomCrop, RandomCropNearBBox, ShiftScaleRotate, GaussNoise, ElasticTransform
-from albumentations import CenterCrop
 from albumentations.pytorch import ToTensor
 
 from dataflow.datasets import INPUT_PATH, HPADataset
@@ -34,13 +33,13 @@ train_transforms = Compose([
     ElasticTransform(p=0.5),
     ToTensor()
 ])
-train_transform_fn = lambda dp: train_transforms(**{"image": dp[0], "tags": dp[1].astype('float32')})
+train_transform_fn = lambda dp: train_transforms(**dp)
 
 
 val_transforms = Compose([
     ToTensor()
 ])
-val_transform_fn = lambda dp: val_transforms(**{"image": dp[0], "tags": dp[1].astype('float32')})
+val_transform_fn = lambda dp: val_transforms(**dp)
 
 
 batch_size = 8

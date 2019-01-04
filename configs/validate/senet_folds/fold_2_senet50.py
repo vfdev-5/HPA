@@ -6,14 +6,13 @@ from albumentations import CenterCrop, Rotate, RandomRotate90, Flip
 from albumentations.pytorch import ToTensor
 from dataflow.datasets import INPUT_PATH, HPADataset
 from dataflow.dataloaders import get_base_train_val_loaders_by_fold, get_train_val_indices, Subset, TransformedDataset, DataLoader
-from models.resnet import HPAResNet50
-
+from models.senet import HPASENet50
 
 seed = 12
 device = "cuda"
 debug = False
 
-val_fold_index = 0
+val_fold_index = 2
 n_folds = 3
 
 n_tta = 7
@@ -21,12 +20,12 @@ n_tta = 7
 tta_transforms = Compose([
     Flip(),
     RandomRotate90(),
-    CenterCrop(320, 320),
+    ElasticTransform(p=0.3),
     ToTensor()
 ])
-tta_transform_fn = lambda dp: tta_transforms(**{"image": dp[0], "tags": dp[1].astype('float32')})
+tta_transform_fn = lambda dp: tta_transforms(**dp)
 
-batch_size = 128
+batch_size = 96
 num_workers = 8
 
 trainval_df = pd.read_csv(INPUT_PATH / "train.csv")
@@ -45,7 +44,7 @@ val_loader = DataLoader(val_ds, shuffle=False,
                         batch_size=batch_size, num_workers=num_workers,
                         pin_memory="cuda" in device, drop_last=False)
 
-model = HPAResNet50(num_classes=HPADataset.num_tags)
+model = HPASENet50(num_classes=HPADataset.num_tags)
 
-run_uuid = "6bf2701872df4bd190a9c517a5e52f32"
-weights_filename = "model_HPAResNet50_162_val_loss=0.07056979.pth"
+run_uuid = "5ce53937244e43079259f35872b1ebfa"
+weights_filename = "model_HPASENet50_49_val_loss=0.07271714.pth"

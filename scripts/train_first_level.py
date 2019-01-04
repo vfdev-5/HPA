@@ -233,7 +233,7 @@ def prepare_batch(batch, device=None, non_blocking=False):
     """Prepare batch for training: pass to a device with options
 
     """
-    x, y = batch['image'], batch['tags']
+    x, y = batch['image'], batch['target'].type(torch.float)
     return (convert_tensor(x, device=device, non_blocking=non_blocking),
             convert_tensor(y, device=device, non_blocking=non_blocking))
 

@@ -37,13 +37,12 @@ def get_tif_image(image_id, path):
 
 class HPADataset(Dataset):
 
-    tags = ['Actin filaments', 'Aggresome', 'Cell junctions', 'Centrosome',
-            'Cytokinetic bridge', 'Cytoplasmic bodies', 'Cytosol', 'Endoplasmic reticulum',
-            'Endosomes', 'Focal adhesion sites', 'Golgi apparatus', 'Intermediate filaments',
-            'Lipid droplets', 'Lysosomes', 'Microtubule ends', 'Microtubule organizing center',
-            'Microtubules', 'Mitochondria', 'Mitotic spindle', 'Nuclear bodies', 'Nuclear membrane',
-            'Nuclear speckles', 'Nucleoli', 'Nucleoli fibrillar center', 'Nucleoplasm',
-            'Peroxisomes', 'Plasma membrane', 'Rods and rings']
+    tags = ['Nucleoplasm', 'Nuclear membrane', 'Nucleoli', 'Nucleoli fibrillar center', 'Nuclear speckles',
+            'Nuclear bodies', 'Endoplasmic reticulum', 'Golgi apparatus', 'Peroxisomes', 'Endosomes',
+            'Lysosomes', 'Intermediate filaments', 'Actin filaments', 'Focal adhesion sites', 'Microtubules',
+            'Microtubule ends', 'Cytokinetic bridge', 'Mitotic spindle', 'Microtubule organizing center', 'Centrosome',
+            'Lipid droplets', 'Plasma membrane', 'Cell junctions', 'Mitochondria', 'Aggresome', 'Cytosol',
+            'Cytoplasmic bodies', 'Rods and rings']
     num_tags = len(tags)
 
     def __init__(self, dataframe, path, mode='png'):
@@ -63,8 +62,14 @@ class HPADataset(Dataset):
         else:
             self.targets = self.image_ids
 
-        self.get_image_fn = get_png_image if mode == 'png' else get_tif_image
-        self.mode = mode
+        if mode == 'png':
+            self.get_image_fn = get_png_image
+        elif mode == 'tif':
+            self.get_image_fn = get_tif_image
+        elif callable(mode):
+            self.get_image_fn = mode
+        else:
+            raise ValueError("Unknown mode {}".format(mode))
 
     def __len__(self):
         return len(self.image_ids)
@@ -73,7 +78,7 @@ class HPADataset(Dataset):
         image_id = self.image_ids[index]
         img = self.get_image_fn(image_id, self.path)
         target = self.targets[index]
-        return img, target
+        return {"image": img, "target": target, "image_id": image_id}
 
 
 class TransformedDataset(Dataset):
