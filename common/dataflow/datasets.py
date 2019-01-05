@@ -95,3 +95,27 @@ class TransformedDataset(Dataset):
     def __getitem__(self, index):
         dp = self.ds[index]
         return self.transform_fn(dp)
+
+
+from albumentations.core.composition import BaseCompose
+
+
+class TransformsProgram(BaseCompose):
+
+    def __init__(self, transforms, milestones, p=1.0):
+        assert len(transforms) == len(milestones) + 1
+        assert sorted(milestones) == milestones
+        super(TransformsProgram, self).__init__(transforms, p)
+        transforms_ps = [t.p for t in transforms]
+        s = sum(transforms_ps)
+        self.transforms_ps = [t / s for t in transforms_ps]
+        self.milestones = milestones
+        self._count = 0
+
+    def __call__(self, **data):
+        idx = sum([m <= self._count for m in self.milestones])
+        t = self.transforms[idx]
+        t.p = 1.
+        data = t(**data)
+        self._count += 1
+        return data

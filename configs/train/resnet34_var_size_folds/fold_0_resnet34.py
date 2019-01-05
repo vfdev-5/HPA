@@ -7,12 +7,12 @@ from torch.optim.lr_scheduler import MultiStepLR
 import matplotlib
 matplotlib.use('Agg')
 
-from albumentations import Compose, Resize, RandomCropNearBBox, ShiftScaleRotate, GaussNoise, ElasticTransform
-from albumentations import RandomBrightnessContrast
+from albumentations import Compose, RandomCrop, ShiftScaleRotate, GaussNoise, ElasticTransform
+from albumentations import RandomBrightnessContrast, NoOp
 from albumentations.pytorch import ToTensor
 
-from dataflow.datasets import INPUT_PATH, HPADataset
-from dataflow.dataloaders import get_base_train_val_loaders_by_fold
+from dataflow.datasets import INPUT_PATH, HPADataset, TransformsProgram
+from dataflow.dataloaders import get_var_batchsize_train_val_loaders_by_fold
 from models.resnet import HPASeparableResNet34
 from loss_functions.focal_loss import FocalLoss
 
@@ -28,10 +28,16 @@ debug = False
 val_fold_index = 0
 n_folds = 3
 
+batch_size = 16
+
 train_transforms = Compose([
     ShiftScaleRotate(shift_limit=0.2, scale_limit=0.075, rotate_limit=45, interpolation=cv2.INTER_CUBIC, p=0.3),
-    Resize(224, 224),
-    GaussNoise(),
+    ElasticTransform(p=0.5),
+    TransformsProgram(
+        transforms=[RandomCrop(64, 64), RandomCrop(128, 128), RandomCrop(256, 256), NoOp()],
+        milestones=[8000 * batch_size, 16000 * batch_size, 32000 * batch_size],
+    ),
+    GaussNoise(p=0.1),
     RandomBrightnessContrast(),
     ToTensor(normalize={"mean": [0.5, 0.5, 0.5, 0.5], "std": [1.0, 1.0, 1.0, 1.0]})
 ])
@@ -45,15 +51,16 @@ val_transforms = Compose([
 val_transform_fn = lambda dp: val_transforms(**dp)
 
 
-batch_size = 64
 num_workers = 8
 
 train_loader, val_loader, train_eval_loader = \
-    get_base_train_val_loaders_by_fold(INPUT_PATH, train_transform_fn, val_transform_fn,
-                                       batch_size=batch_size, num_workers=num_workers, device=device,
-                                       val_batch_size=8,
-                                       fold_index=val_fold_index, n_folds=n_folds,
-                                       random_state=seed)
+    get_var_batchsize_train_val_loaders_by_fold(INPUT_PATH, train_transform_fn, val_transform_fn,
+                                                batch_sizes=[batch_size * 8, batch_size * 4, batch_size * 2, batch_size],
+                                                milestones=[8000, 16000, 32000],
+                                                val_batch_size=16,
+                                                num_workers=num_workers, device=device,
+                                                fold_index=val_fold_index, n_folds=n_folds,
+                                                random_state=seed)
 
 model = HPASeparableResNet34(num_classes=HPADataset.num_tags)
 
@@ -94,7 +101,7 @@ metrics = {
 }
 
 log_interval = 50
-val_interval_epochs = 3
+val_interval_epochs = 2
 val_metrics = metrics
 
 trainer_checkpoint_interval = 5000

@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 import matplotlib
 matplotlib.use('Agg')
 
-from albumentations import Compose, Resize, RandomCropNearBBox, ShiftScaleRotate, GaussNoise, ElasticTransform
+from albumentations import Compose, RandomCrop, RandomCropNearBBox, ShiftScaleRotate, GaussNoise, ElasticTransform
 from albumentations import RandomBrightnessContrast
 from albumentations.pytorch import ToTensor
 
@@ -25,13 +25,12 @@ seed = 12
 device = "cuda"
 debug = False
 
-val_fold_index = 0
+val_fold_index = 2
 n_folds = 3
 
 train_transforms = Compose([
     ShiftScaleRotate(shift_limit=0.2, scale_limit=0.075, rotate_limit=45, interpolation=cv2.INTER_CUBIC, p=0.3),
-    Resize(224, 224),
-    GaussNoise(),
+    ElasticTransform(p=0.5),
     RandomBrightnessContrast(),
     ToTensor(normalize={"mean": [0.5, 0.5, 0.5, 0.5], "std": [1.0, 1.0, 1.0, 1.0]})
 ])
@@ -45,13 +44,12 @@ val_transforms = Compose([
 val_transform_fn = lambda dp: val_transforms(**dp)
 
 
-batch_size = 64
+batch_size = 16
 num_workers = 8
 
 train_loader, val_loader, train_eval_loader = \
     get_base_train_val_loaders_by_fold(INPUT_PATH, train_transform_fn, val_transform_fn,
                                        batch_size=batch_size, num_workers=num_workers, device=device,
-                                       val_batch_size=8,
                                        fold_index=val_fold_index, n_folds=n_folds,
                                        random_state=seed)
 
@@ -59,10 +57,10 @@ model = HPASeparableResNet34(num_classes=HPADataset.num_tags)
 
 
 criterion = FocalLoss(gamma=0.4)
-optimizer = Adam(model.parameters(), lr=0.00065, weight_decay=0.0001, amsgrad=True)
+optimizer = Adam(model.parameters(), lr=0.001, weight_decay=0.0001, amsgrad=True)
 
 # Optional config param
-lr_scheduler = MultiStepLR(optimizer, milestones=[10, 20, 30, 40, 50, 60, 70, 90], gamma=0.88)
+lr_scheduler = MultiStepLR(optimizer, milestones=[20, 30, 40, 50, 60, 70, 100, 120, 150, 170], gamma=0.88)
 
 num_epochs = 100
 
@@ -94,7 +92,7 @@ metrics = {
 }
 
 log_interval = 50
-val_interval_epochs = 3
+val_interval_epochs = 2
 val_metrics = metrics
 
 trainer_checkpoint_interval = 5000

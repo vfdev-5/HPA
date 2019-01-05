@@ -3,7 +3,7 @@ import pandas as pd
 
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
-from torch.utils.data.sampler import WeightedRandomSampler
+from torch.utils.data.sampler import WeightedRandomSampler, BatchSampler, RandomSampler
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset, ConcatDataset
 
@@ -36,6 +36,7 @@ def get_train_val_indices(trainval_df, fold_index=0, n_splits=3, random_state=No
 
 def get_base_train_val_loaders_by_fold(input_path, train_transforms, val_transforms,
                                        batch_size=16, num_workers=8, device="cuda",
+                                       val_batch_size=None,
                                        fold_index=0, n_folds=3, random_state=None,
                                        limit_train_num_samples=None,
                                        limit_val_num_samples=None):
@@ -64,12 +65,13 @@ def get_base_train_val_loaders_by_fold(input_path, train_transforms, val_transfo
                               batch_size=batch_size, num_workers=num_workers,
                               pin_memory="cuda" in device, drop_last=True)
 
+    val_batch_size = batch_size * 4 if val_batch_size is None else val_batch_size
     val_loader = DataLoader(val_ds, shuffle=False,
-                            batch_size=batch_size * 4, num_workers=num_workers,
+                            batch_size=val_batch_size, num_workers=num_workers,
                             pin_memory="cuda" in device, drop_last=False)
 
     train_eval_loader = DataLoader(train_eval_ds, shuffle=False,
-                                   batch_size=batch_size * 4, num_workers=num_workers,
+                                   batch_size=val_batch_size, num_workers=num_workers,
                                    pin_memory="cuda" in device, drop_last=False)
 
     return train_loader, val_loader, train_eval_loader
@@ -151,3 +153,70 @@ def get_ae_loader(input_path, transforms=None,
     return DataLoader(combined_ds, shuffle=True,
                       batch_size=batch_size, num_workers=num_workers,
                       pin_memory="cuda" in device, drop_last=True)
+
+
+class VariableSizeBatchSampler(BatchSampler):
+
+    def __init__(self, sampler, batch_sizes, milestones, drop_last):
+        assert len(batch_sizes) == len(milestones) + 1
+        assert sorted(milestones) == milestones
+        super(VariableSizeBatchSampler, self).__init__(sampler, batch_sizes[0], drop_last)
+        self._count = 0
+        self.batch_sizes = batch_sizes
+        self.milestones = milestones
+
+    def __iter__(self):
+        super(VariableSizeBatchSampler).__iter__()
+        self._count += 1
+        idx = sum([m <= self._count for m in self.milestones])
+        self.batch_size = self.batch_sizes[idx]
+
+
+def get_var_batchsize_train_val_loaders_by_fold(input_path, train_transforms, val_transforms,
+                                                batch_sizes=[], milestones=[],
+                                                val_batch_size=16,
+                                                num_workers=8, device="cuda",
+                                                fold_index=0, n_folds=3, random_state=None,
+                                                limit_train_num_samples=None,
+                                                limit_val_num_samples=None):
+    assert len(batch_sizes) == len(milestones) + 1
+    assert sorted(milestones) == milestones
+
+    trainval_df = pd.read_csv(input_path / "train.csv")
+    trainval_ds = HPADataset(trainval_df, input_path / "train")
+    train_fold_indices, val_fold_indices = get_train_val_indices(trainval_df,
+                                                                 fold_index=fold_index,
+                                                                 n_splits=n_folds,
+                                                                 random_state=random_state)
+
+    if limit_train_num_samples is not None:
+        train_fold_indices = train_fold_indices[:limit_train_num_samples]
+
+    if limit_val_num_samples is not None:
+        val_fold_indices = val_fold_indices[:limit_val_num_samples]
+
+    train_ds = Subset(trainval_ds, train_fold_indices)
+    val_ds = Subset(trainval_ds, val_fold_indices)
+    train_eval_ds = train_ds
+
+    train_ds = TransformedDataset(train_ds, transform_fn=train_transforms)
+    val_ds = TransformedDataset(val_ds, transform_fn=val_transforms)
+    train_eval_ds = TransformedDataset(train_eval_ds, transform_fn=val_transforms)
+
+    sampler = RandomSampler(train_ds)
+    batch_sampler = VariableSizeBatchSampler(sampler, batch_sizes, milestones, drop_last=True)
+
+    train_loader = DataLoader(train_ds,
+                              batch_sampler=batch_sampler,
+                              num_workers=num_workers,
+                              pin_memory="cuda" in device)
+
+    val_loader = DataLoader(val_ds, shuffle=False,
+                            batch_size=val_batch_size * 4, num_workers=num_workers,
+                            pin_memory="cuda" in device, drop_last=False)
+
+    train_eval_loader = DataLoader(train_eval_ds, shuffle=False,
+                                   batch_size=val_batch_size * 4, num_workers=num_workers,
+                                   pin_memory="cuda" in device, drop_last=False)
+
+    return train_loader, val_loader, train_eval_loader
